@@ -12,31 +12,16 @@ Este repositorio contiene un script que extrae títulos de vídeos de un canal d
 - `tabulate`
 - `webbrowser`
 
-## Cómo funciona
+### Cuenta de ArcGIS Online
 
-1. **Configuración del Logger**: Se utiliza el módulo `logging` para registrar y mostrar información y errores durante la ejecución del script.
+Es necesario tener una cuenta en ArcGIS Online para poder publicar y administrar el FeatureService. Si aún no tienes una, puedes [registrarte aquí](https://www.arcgis.com/home/signin.html).
 
-2. **Obtener las API Keys**: Las claves API para YouTube y OpenAI se almacenan de forma segura utilizando `keyring`. 
+### Configuración de `keyring`
 
-3. **Extracción de Localizaciones con OpenAI**: Se utiliza la API de OpenAI para identificar nombres de lugares o localizaciones geográficas en los títulos de los vídeos.
+El módulo `keyring` se utiliza para almacenar de forma segura las claves API y otros secretos. Para configurarlo:
 
-4. **Geocodificación**: Una vez identificadas las localizaciones, se utilizan los servicios de geocodificación de ArcGIS para obtener sus coordenadas.
+1. Instala `keyring` con `pip install keyring`.
+2. Desde tu terminal o consola, usa el siguiente comando para establecer una clave:
 
-5. **Creación y Publicación de FeatureService**: Las localizaciones geocodificadas se guardan en un archivo GeoJSON, que luego se publica en ArcGIS Online como un FeatureService.
-
-6. **Apertura del FeatureService en un Navegador**: Una vez publicado el FeatureService, el script automáticamente abre el servicio en un navegador para visualización.
-
-## Cómo usar
-
-1. Clona o descarga este repositorio.
-2. Instala las bibliotecas necesarias utilizando `pip`.
-3. Asegúrate de tener configurado `keyring` con las claves API necesarias.
-4. Ejecuta el script.
-
-## Contribuciones
-
-Las contribuciones son bienvenidas. Si tienes sugerencias o mejoras, no dudes en abrir un issue o hacer un pull request.
-
-## Licencia
-
-[MIT](LICENSE)
+```bash
+python -c "import keyring; keyring.set_password('YouTubeGIS', 'OPENAI_API_KEY', 'tu_clave_openai')"
