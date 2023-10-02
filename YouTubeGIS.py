@@ -69,7 +69,7 @@ def generate_random_string(length):
     """Genera una cadena aleatoria del tamaño especificado con un timestamp adjunto."""
     
     # Obtener el timestamp actual y formatearlo
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     # Generar la cadena aleatoria
     letters = string.ascii_lowercase
@@ -177,7 +177,7 @@ def get_youtube_videos(youtube_api_key, channel_id, max_results):
     response = request.execute()
     return [item['snippet']['title'] for item in response['items']]
 
-def process_and_publish_videos(youtube_api_key, openai_api_key, channel_id):
+def process_and_publish_videos(youtube_api_key, openai_api_key, channel_id, num_videos):
     gis = GIS("https://www.arcgis.com", username, pwd)
     
     titles = get_youtube_videos(youtube_api_key, channel_id, num_videos)
@@ -201,7 +201,11 @@ def num_videos():
     option, index = pick(channel_id, title," 👉 ")
     return option
 
-num_videos = int(num_videos())
+
 
 # Ejecución
-process_and_publish_videos(youtube_api_key, openai_api_key, yt_channel_selection())
+def main():
+    process_and_publish_videos(youtube_api_key, openai_api_key, yt_channel_selection(), int(num_videos()))
+
+if __name__ == '__main__':
+    main()

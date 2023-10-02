@@ -1,6 +1,6 @@
 # YouTubeGIS
 
-Este repositorio contiene un script que extrae títulos de vídeos de un canal de YouTube, identifica localizaciones geográficas en esos títulos utilizando OpenAI, geocodifica esas localizaciones y, finalmente, las publica en ArcGIS Online como un FeatureService.
+Este repositorio contiene un script que extrae títulos de vídeos de un canal de YouTube seleccionado, identifica localizaciones geográficas en esos títulos utilizando OpenAI, geocodifica esas localizaciones y, finalmente, las publica en ArcGIS Online como un FeatureService.
 
 ## Requisitos
 
@@ -11,6 +11,7 @@ Este repositorio contiene un script que extrae títulos de vídeos de un canal d
 - `keyring`
 - `tabulate`
 - `webbrowser`
+- `pick`
 
 ### Cuenta de ArcGIS Online
 
