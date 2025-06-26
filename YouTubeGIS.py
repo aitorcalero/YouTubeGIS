@@ -109,17 +109,25 @@ def open_feature_service_in_browser(feature_service_id):
     
     webbrowser.open(full_url, new=2)
 
-def save_to_geojson(features, filename=generate_random_string(8)+".geojson"):
-    """Guarda las características en un archivo GeoJSON."""
+def save_to_geojson(features, filename=None):
+    """Guarda las características en un archivo GeoJSON.
+
+    Si no se especifica un nombre de archivo, se generará uno único cada vez.
+    """
+
+    if filename is None:
+        filename = generate_random_string(8) + ".geojson"
+
     geojson = {
         "type": "FeatureCollection",
         "features": features
     }
-    with open(filename, 'w') as f:
+
+    with open(filename, "w") as f:
         json.dump(geojson, f)
-        
-    logging.info(f"Arcchivo geojson correctamente generado en {filename}")
-    
+
+    logging.info(f"Archivo geojson correctamente generado en {filename}")
+
     return filename
 
 def create_features_from_locations(titles, location_names, locations):
