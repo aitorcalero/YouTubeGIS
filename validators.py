@@ -13,6 +13,12 @@ if TYPE_CHECKING:
     from typing import Any
 
 
+CREDENTIALS_HELP = (
+    "Configura las credenciales con 'python api_keys.py' o define las variables de entorno "
+    "OPENAI_API_KEY, YOUTUBE_API_KEY, ARCGIS_USERNAME y ARCGIS_PASSWORD."
+)
+
+
 def validate_channel_id(channel_id: str) -> None:
     """Validate YouTube channel ID format.
     
@@ -64,10 +70,10 @@ def validate_api_keys(openai_key: str | None, youtube_key: str | None) -> None:
         ConfigurationError: If any required API key is missing
     """
     if not openai_key:
-        raise ConfigurationError("OpenAI API key is missing. Run 'python api_keys.py' to configure.")
+        raise ConfigurationError(f"OpenAI API key is missing. {CREDENTIALS_HELP}")
     
     if not youtube_key:
-        raise ConfigurationError("YouTube API key is missing. Run 'python api_keys.py' to configure.")
+        raise ConfigurationError(f"YouTube API key is missing. {CREDENTIALS_HELP}")
 
 
 def validate_credentials(username: str | None, password: str | None) -> None:
@@ -81,7 +87,7 @@ def validate_credentials(username: str | None, password: str | None) -> None:
         ConfigurationError: If credentials are missing
     """
     if not username or not password:
-        raise ConfigurationError("ArcGIS credentials missing. Run 'python api_keys.py' to configure.")
+        raise ConfigurationError(f"ArcGIS credentials missing. {CREDENTIALS_HELP}")
 
 
 def validate_location_name(location_name: str | None) -> None:

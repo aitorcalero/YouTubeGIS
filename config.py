@@ -43,6 +43,12 @@ KEYRING_YOUTUBE_KEY: Final[str] = "YOUTUBE_API_KEY"
 KEYRING_USERNAME_KEY: Final[str] = "USERNAME"
 KEYRING_PASSWORD_KEY: Final[str] = "PWD"
 
+# Environment Variable Configuration
+ENV_OPENAI_API_KEYS: Final[tuple[str, ...]] = ("OPENAI_API_KEY",)
+ENV_YOUTUBE_API_KEYS: Final[tuple[str, ...]] = ("YOUTUBE_API_KEY",)
+ENV_ARCGIS_USERNAMES: Final[tuple[str, ...]] = ("ARCGIS_USERNAME", "USERNAME")
+ENV_ARCGIS_PASSWORDS: Final[tuple[str, ...]] = ("ARCGIS_PASSWORD", "PWD")
+
 # UI Configuration
 CHANNEL_SELECTION_TITLE: Final[str] = "Elige el canal de YouTube que quieras: "
 VIDEO_COUNT_TITLE: Final[str] = "Dime cuántos vídeos quieres procesar: "

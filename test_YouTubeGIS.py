@@ -12,6 +12,9 @@ from YouTubeGIS import (
     extract_location_pairs_from_titles,
     extract_location_with_openai,
     get_root_folder,
+    load_credentials,
+    load_credentials_from_environment,
+    merge_credentials,
     publish_geojson_as_feature_service,
     process_and_publish_videos,
 )
@@ -116,6 +119,95 @@ def test_get_root_folder_uses_logged_in_user() -> None:
 
     assert result is mock_folder
     mock_gis.content.folders.get.assert_called_once_with(owner=mock_user)
+
+
+@patch.dict(
+    "os.environ",
+    {
+        "OPENAI_API_KEY": "env-openai",
+        "YOUTUBE_API_KEY": "env-youtube",
+        "ARCGIS_USERNAME": "env-user",
+        "ARCGIS_PASSWORD": "env-password",
+    },
+    clear=True,
+)
+def test_load_credentials_from_environment_supports_all_values() -> None:
+    credentials = load_credentials_from_environment()
+
+    assert credentials == Credentials(
+        openai_api_key="env-openai",
+        youtube_api_key="env-youtube",
+        username="env-user",
+        password="env-password",
+    )
+
+
+def test_merge_credentials_prefers_primary_values() -> None:
+    merged = merge_credentials(
+        Credentials("keyring-openai", None, "keyring-user", None),
+        Credentials("env-openai", "env-youtube", "env-user", "env-password"),
+    )
+
+    assert merged == Credentials(
+        openai_api_key="keyring-openai",
+        youtube_api_key="env-youtube",
+        username="keyring-user",
+        password="env-password",
+    )
+
+
+@patch.dict(
+    "os.environ",
+    {
+        "OPENAI_API_KEY": "env-openai",
+        "ARCGIS_PASSWORD": "env-password",
+    },
+    clear=True,
+)
+@patch("YouTubeGIS._load_keyring_credentials")
+def test_load_credentials_combines_keyring_and_environment(
+    mock_load_keyring_credentials: MagicMock,
+) -> None:
+    mock_load_keyring_credentials.return_value = Credentials(
+        openai_api_key=None,
+        youtube_api_key="keyring-youtube",
+        username="keyring-user",
+        password=None,
+    )
+
+    credentials = load_credentials()
+
+    assert credentials == Credentials(
+        openai_api_key="env-openai",
+        youtube_api_key="keyring-youtube",
+        username="keyring-user",
+        password="env-password",
+    )
+
+
+@patch.dict(
+    "os.environ",
+    {
+        "OPENAI_API_KEY": "env-openai",
+        "YOUTUBE_API_KEY": "env-youtube",
+        "ARCGIS_USERNAME": "env-user",
+        "ARCGIS_PASSWORD": "env-password",
+    },
+    clear=True,
+)
+@patch("YouTubeGIS._load_keyring_credentials", side_effect=ConfigurationError("missing keyring"))
+def test_load_credentials_uses_environment_when_keyring_unavailable(
+    mock_load_keyring_credentials: MagicMock,
+) -> None:
+    credentials = load_credentials()
+
+    assert credentials == Credentials(
+        openai_api_key="env-openai",
+        youtube_api_key="env-youtube",
+        username="env-user",
+        password="env-password",
+    )
+    mock_load_keyring_credentials.assert_called_once()
 
 
 @patch("YouTubeGIS.get_root_folder")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import string
 import webbrowser
@@ -18,6 +19,10 @@ from config import (
     ARCGIS_PORTAL,
     CHANNEL_SELECTION_TITLE,
     DEFAULT_PICK_INDICATOR,
+    ENV_ARCGIS_PASSWORDS,
+    ENV_ARCGIS_USERNAMES,
+    ENV_OPENAI_API_KEYS,
+    ENV_YOUTUBE_API_KEYS,
     GEOJSON_ENCODING,
     GEOJSON_INDENT,
     KEYRING_OPENAI_KEY,
@@ -101,6 +106,94 @@ class Credentials:
     password: str | None
 
 
+def _clean_credential(value: str | None) -> str | None:
+    """Normalize blank credential values to None."""
+
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _get_first_environment_value(variable_names: Sequence[str]) -> str | None:
+    """Return the first non-empty environment variable value from a list of names."""
+
+    for variable_name in variable_names:
+        value = _clean_credential(os.getenv(variable_name))
+        if value:
+            return value
+    return None
+
+
+def load_credentials_from_environment() -> Credentials:
+    """Load supported credentials from environment variables."""
+
+    return Credentials(
+        openai_api_key=_get_first_environment_value(ENV_OPENAI_API_KEYS),
+        youtube_api_key=_get_first_environment_value(ENV_YOUTUBE_API_KEYS),
+        username=_get_first_environment_value(ENV_ARCGIS_USERNAMES),
+        password=_get_first_environment_value(ENV_ARCGIS_PASSWORDS),
+    )
+
+
+def merge_credentials(primary: Credentials, fallback: Credentials) -> Credentials:
+    """Merge two credential sets, preferring the primary values."""
+
+    return Credentials(
+        openai_api_key=primary.openai_api_key or fallback.openai_api_key,
+        youtube_api_key=primary.youtube_api_key or fallback.youtube_api_key,
+        username=primary.username or fallback.username,
+        password=primary.password or fallback.password,
+    )
+
+
+def _describe_credentials(credentials: Credentials) -> str:
+    """Return a compact description of which credentials are available."""
+
+    status = {
+        "OpenAI": bool(credentials.openai_api_key),
+        "YouTube": bool(credentials.youtube_api_key),
+        "ArcGIS username": bool(credentials.username),
+        "ArcGIS password": bool(credentials.password),
+    }
+    available = [name for name, present in status.items() if present]
+    return ", ".join(available) if available else "none"
+
+
+def _missing_credentials_message() -> str:
+    """Build a reusable guidance message for missing credentials."""
+
+    return (
+        "Configura las credenciales con 'python api_keys.py' o define las variables de entorno "
+        "OPENAI_API_KEY, YOUTUBE_API_KEY, ARCGIS_USERNAME y ARCGIS_PASSWORD."
+    )
+
+
+def _load_keyring_credentials(service_id: str) -> Credentials:
+    """Load stored credentials from the OS keyring."""
+
+    keyring = _import_keyring()
+    return Credentials(
+        openai_api_key=_clean_credential(keyring.get_password(service_id, KEYRING_OPENAI_KEY)),
+        youtube_api_key=_clean_credential(keyring.get_password(service_id, KEYRING_YOUTUBE_KEY)),
+        username=_clean_credential(keyring.get_password(service_id, KEYRING_USERNAME_KEY)),
+        password=_clean_credential(keyring.get_password(service_id, KEYRING_PASSWORD_KEY)),
+    )
+
+
+def _credentials_available(credentials: Credentials) -> bool:
+    """Return True when at least one credential value is present."""
+
+    return any(
+        [
+            credentials.openai_api_key,
+            credentials.youtube_api_key,
+            credentials.username,
+            credentials.password,
+        ]
+    )
+
+
 def _import_keyring() -> Any:
     try:
         import keyring
@@ -172,26 +265,25 @@ def _import_pick() -> Any:
 
 
 def load_credentials(service_id: str = KEYRING_SERVICE_ID) -> Credentials:
-    """Load stored credentials from the OS keyring."""
+    """Load credentials from keyring first and complete missing values from the environment."""
 
-    keyring = _import_keyring()
-    credentials = Credentials(
-        openai_api_key=keyring.get_password(service_id, KEYRING_OPENAI_KEY),
-        youtube_api_key=keyring.get_password(service_id, KEYRING_YOUTUBE_KEY),
-        username=keyring.get_password(service_id, KEYRING_USERNAME_KEY),
-        password=keyring.get_password(service_id, KEYRING_PASSWORD_KEY),
-    )
+    keyring_credentials = Credentials(None, None, None, None)
+    try:
+        keyring_credentials = _load_keyring_credentials(service_id)
+    except ConfigurationError:
+        LOGGER.info(
+            "Keyring no está disponible; se intentarán usar variables de entorno para las credenciales."
+        )
 
-    if not any(
-        [
-            credentials.openai_api_key,
-            credentials.youtube_api_key,
-            credentials.username,
-            credentials.password,
-        ]
-    ):
-        LOGGER.warning(
-            "No credentials were found in keyring. Run `python api_keys.py` first."
+    env_credentials = load_credentials_from_environment()
+    credentials = merge_credentials(keyring_credentials, env_credentials)
+
+    if not _credentials_available(credentials):
+        LOGGER.warning("No se encontraron credenciales configuradas. %s", _missing_credentials_message())
+    elif _credentials_available(env_credentials):
+        LOGGER.info(
+            "Credenciales resueltas con soporte de variables de entorno: %s",
+            _describe_credentials(credentials),
         )
 
     return credentials
@@ -227,7 +319,7 @@ def extract_location_with_openai(title: str, api_key: str | None) -> str | None:
     validate_video_title(title)
     if not api_key:
         raise ConfigurationError(
-            "OpenAI API key is missing. Run 'python api_keys.py' to configure."
+            f"OpenAI API key is missing. {_missing_credentials_message()}"
         )
 
     LOGGER.info("Extracting location from title with OpenAI: %s", title)
@@ -408,7 +500,7 @@ def extract_location_pairs_from_titles(
 
     if not openai_api_key:
         raise ConfigurationError(
-            "OpenAI API key is missing. Run 'python api_keys.py' to configure."
+            f"OpenAI API key is missing. {_missing_credentials_message()}"
         )
 
     matched_titles: list[str] = []
@@ -448,7 +540,7 @@ def get_youtube_videos(
     validate_num_videos(max_results)
     if not youtube_api_key:
         raise ConfigurationError(
-            "YouTube API key is missing. Run 'python api_keys.py' to configure."
+            f"YouTube API key is missing. {_missing_credentials_message()}"
         )
 
     build = _import_youtube_build()
