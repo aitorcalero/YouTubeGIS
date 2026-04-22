@@ -1,3 +1,10 @@
 api_keys.txt
 api_keys.py
 7_CODE.code-workspace
+.venv/
+.venv311/
+__pycache__/
+.pytest_cache/
+output/
+htmlcov/
+*.pyc

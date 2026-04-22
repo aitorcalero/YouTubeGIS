@@ -1,0 +1,7 @@
+keyring
+openai>=1.0.0
+arcgis
+google-api-python-client
+pick
+pytest>=7.4
+pytest-cov>=4.1
