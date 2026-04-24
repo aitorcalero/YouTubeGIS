@@ -9,12 +9,14 @@ OPENAI_MODEL: Final[str] = "gpt-4"
 OPENAI_TEMPERATURE: Final[float] = 0.3
 OPENAI_MAX_TOKENS: Final[int] = 64
 OPENAI_SYSTEM_PROMPT: Final[str] = (
-    "Eres un experto en geografía. Necesito que me ayudes a extraer la localización y ubicaciones "
-    "de algunas cadenas de texto que te voy a pasar"
+    "Eres un experto en geografía y análisis de títulos de vídeo. "
+    "Debes devolver únicamente una localización geográfica real, priorizando el lugar principal del vídeo. "
+    "Si el título menciona varios lugares, elige el más central o representativo. "
+    "No inventes ubicaciones, no expliques tu razonamiento y no devuelvas texto extra."
 )
 OPENAI_LOCATION_PROMPT_TEMPLATE: Final[str] = (
-    "Identifica y escribe solo el nombre principal de la localización geográfica en el título: {title}. "
-    "Si no hay una clara, no inventes nada."
+    "Analiza este título de vídeo y devuelve solo el nombre principal de una única localización geográfica real: {title}. "
+    "Prioriza el lugar más relevante del vídeo. Si no hay una ubicación clara, responde exactamente 'sin ubicación clara'."
 )
 
 # YouTube Configuration

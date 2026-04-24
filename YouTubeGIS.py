@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -270,9 +271,10 @@ def load_credentials(service_id: str = KEYRING_SERVICE_ID) -> Credentials:
     keyring_credentials = Credentials(None, None, None, None)
     try:
         keyring_credentials = _load_keyring_credentials(service_id)
-    except ConfigurationError:
+    except Exception as exc:
         LOGGER.info(
-            "Keyring no está disponible; se intentarán usar variables de entorno para las credenciales."
+            "No se pudieron cargar credenciales desde keyring (%s); se intentarán variables de entorno.",
+            exc.__class__.__name__,
         )
 
     env_credentials = load_credentials_from_environment()
@@ -398,6 +400,15 @@ def open_feature_service_in_browser(
     full_url = build_feature_service_url(feature_service_id, portal_url)
     webbrowser.open(full_url, new=2)
     return full_url
+
+
+def build_feature_service_url_only(
+    feature_service_id: str,
+    portal_url: str = ARCGIS_PORTAL,
+) -> str:
+    """Build the published ArcGIS item URL without opening a browser."""
+
+    return build_feature_service_url(feature_service_id, portal_url)
 
 
 def save_to_geojson(features: list[dict[str, Any]], filename: str | None = None) -> str:
@@ -626,6 +637,8 @@ def process_and_publish_videos(
     num_videos: int,
     *,
     arcgis_credentials: Credentials | None = None,
+    open_browser: bool = True,
+    dry_run: bool = False,
 ) -> Any | None:
     """Run the end-to-end workflow from YouTube extraction to ArcGIS publishing."""
 
@@ -652,11 +665,16 @@ def process_and_publish_videos(
         return None
 
     filepath = save_to_geojson(features)
+    if dry_run:
+        LOGGER.info("Dry run enabled; skipping ArcGIS publication. GeoJSON saved at %s", filepath)
+        return filepath
+
     published_item = publish_geojson_as_feature_service(gis, filepath)
-    open_feature_service_in_browser(
-        published_item.id,
-        portal_url=resolve_portal_url(gis),
-    )
+    if open_browser:
+        open_feature_service_in_browser(
+            published_item.id,
+            portal_url=resolve_portal_url(gis),
+        )
     return published_item
 
 
@@ -676,17 +694,85 @@ def num_videos() -> str:
     return option
 
 
-def main() -> None:
-    """Entry point for interactive execution."""
+def _resolve_channel_id(channel_id: str | None) -> str:
+    """Resolve a channel id from CLI input or interactive selection."""
+
+    return channel_id or yt_channel_selection()
+
+
+def _resolve_num_videos(num_videos_value: int | None) -> int:
+    """Resolve a video count from CLI input or interactive selection."""
+
+    return num_videos_value if num_videos_value is not None else int(num_videos())
+
+
+def _resolve_credentials_from_args(args: argparse.Namespace) -> Credentials:
+    """Resolve ArcGIS credentials from CLI arguments or the configured stores."""
+
+    cli_credentials = Credentials(
+        openai_api_key=args.openai_api_key,
+        youtube_api_key=args.youtube_api_key,
+        username=args.arcgis_username,
+        password=args.arcgis_password,
+    )
+    if any(
+        [
+            cli_credentials.openai_api_key,
+            cli_credentials.youtube_api_key,
+            cli_credentials.username,
+            cli_credentials.password,
+        ]
+    ):
+        return merge_credentials(cli_credentials, load_credentials(KEYRING_SERVICE_ID))
+    return load_credentials(KEYRING_SERVICE_ID)
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse command-line arguments for non-interactive execution."""
+
+    parser = argparse.ArgumentParser(description="Run the YouTubeGIS workflow.")
+    parser.add_argument("--channel-id", help="YouTube channel ID to process")
+    parser.add_argument(
+        "--num-videos",
+        type=int,
+        help="Number of recent videos to process",
+    )
+    parser.add_argument("--openai-api-key", help="OpenAI API key")
+    parser.add_argument("--youtube-api-key", help="YouTube API key")
+    parser.add_argument("--arcgis-username", help="ArcGIS Online username")
+    parser.add_argument("--arcgis-password", help="ArcGIS Online password")
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Do not open the published Feature Service in a browser",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Generate GeoJSON and stop before publishing to ArcGIS",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    """Entry point for interactive or parameterized execution."""
 
     try:
-        credentials = load_credentials(KEYRING_SERVICE_ID)
+        args = parse_args(argv)
+        credentials = _resolve_credentials_from_args(args)
         process_and_publish_videos(
             credentials.youtube_api_key,
             credentials.openai_api_key,
-            yt_channel_selection(),
-            int(num_videos()),
-            arcgis_credentials=credentials,
+            _resolve_channel_id(args.channel_id),
+            _resolve_num_videos(args.num_videos),
+            arcgis_credentials=Credentials(
+                openai_api_key=credentials.openai_api_key,
+                youtube_api_key=credentials.youtube_api_key,
+                username=credentials.username,
+                password=credentials.password,
+            ),
+            open_browser=not args.no_browser,
+            dry_run=args.dry_run,
         )
     except YouTubeGISError as exc:
         LOGGER.error("%s", exc)

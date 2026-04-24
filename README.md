@@ -110,6 +110,37 @@ Si usas un entorno virtual local en Windows:
 .\.venv\Scripts\python.exe .\YouTubeGIS.py
 ```
 
+También puedes ejecutarlo sin interacción y pasar parámetros explícitos:
+
+```bash
+python YouTubeGIS.py \
+  --channel-id UCdwdFOhBP9CoAOlHDTmTxaw \
+  --num-videos 1 \
+  --no-browser
+```
+
+Si además quieres validar todo el flujo sin publicar en ArcGIS, usa `--dry-run`:
+
+```bash
+python YouTubeGIS.py \
+  --channel-id UCdwdFOhBP9CoAOlHDTmTxaw \
+  --num-videos 1 \
+  --dry-run
+```
+
+Y, si lo prefieres, pasar también las credenciales por parámetros:
+
+```bash
+python YouTubeGIS.py \
+  --channel-id UCdwdFOhBP9CoAOlHDTmTxaw \
+  --num-videos 1 \
+  --openai-api-key "***" \
+  --youtube-api-key "***" \
+  --arcgis-username "tu-usuario" \
+  --arcgis-password "***" \
+  --no-browser
+```
+
 El script te permitirá:
 
 - elegir un canal de YouTube preconfigurado
