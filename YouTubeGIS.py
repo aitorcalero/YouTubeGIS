@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from config import (
+    API_KEYS_FILENAME,
     ARCGIS_BASE_URL,
     ARCGIS_FEATURE_SERVICE_TAGS,
     ARCGIS_PORTAL,
@@ -26,6 +27,8 @@ from config import (
     ENV_YOUTUBE_API_KEYS,
     GEOJSON_ENCODING,
     GEOJSON_INDENT,
+    FALLBACK_WORKING_DIR,
+    KEYRING_LEGACY_OPENAI_KEY,
     KEYRING_OPENAI_KEY,
     KEYRING_PASSWORD_KEY,
     KEYRING_SERVICE_ID,
@@ -39,6 +42,9 @@ from config import (
     OPENAI_MODEL,
     OPENAI_SYSTEM_PROMPT,
     OPENAI_TEMPERATURE,
+    OPENROUTER_APP_TITLE,
+    OPENROUTER_BASE_URL,
+    OPENROUTER_HTTP_REFERER,
     OUTPUT_DIR,
     RANDOM_STRING_LENGTH,
     TIMESTAMP_FORMAT,
@@ -137,6 +143,66 @@ def load_credentials_from_environment() -> Credentials:
     )
 
 
+def _read_api_keys_file(path: Path) -> dict[str, str]:
+    """Read a simple KEY=VALUE credential file."""
+
+    values: dict[str, str] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return values
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", maxsplit=1)
+        normalized_key = key.strip()
+        normalized_value = value.strip().strip("\"'")
+        if normalized_key and normalized_value:
+            values[normalized_key] = normalized_value
+    return values
+
+
+def _candidate_api_key_files() -> tuple[Path, ...]:
+    """Return credential file locations in lookup order."""
+
+    project_root = Path(__file__).resolve().parent
+    candidates = [
+        Path.cwd() / API_KEYS_FILENAME,
+        project_root / API_KEYS_FILENAME,
+        Path(FALLBACK_WORKING_DIR) / API_KEYS_FILENAME,
+    ]
+    unique_candidates: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve(strict=False)
+        if resolved not in seen:
+            unique_candidates.append(candidate)
+            seen.add(resolved)
+    return tuple(unique_candidates)
+
+
+def load_credentials_from_api_keys_file() -> Credentials:
+    """Load credentials from api_keys.txt when present."""
+
+    for path in _candidate_api_key_files():
+        values = _read_api_keys_file(path)
+        if not values:
+            continue
+        return Credentials(
+            openai_api_key=_clean_credential(
+                values.get("OPENROUTER_API_KEY")
+                or values.get("OPENROUTER")
+                or values.get("OPENAI_API_KEY")
+            ),
+            youtube_api_key=_clean_credential(values.get("YOUTUBE_API_KEY")),
+            username=_clean_credential(values.get("ARCGIS_USERNAME") or values.get("USERNAME")),
+            password=_clean_credential(values.get("ARCGIS_PASSWORD") or values.get("PWD")),
+        )
+    return Credentials(None, None, None, None)
+
+
 def merge_credentials(primary: Credentials, fallback: Credentials) -> Credentials:
     """Merge two credential sets, preferring the primary values."""
 
@@ -152,7 +218,7 @@ def _describe_credentials(credentials: Credentials) -> str:
     """Return a compact description of which credentials are available."""
 
     status = {
-        "OpenAI": bool(credentials.openai_api_key),
+        "OpenRouter": bool(credentials.openai_api_key),
         "YouTube": bool(credentials.youtube_api_key),
         "ArcGIS username": bool(credentials.username),
         "ArcGIS password": bool(credentials.password),
@@ -166,7 +232,8 @@ def _missing_credentials_message() -> str:
 
     return (
         "Configura las credenciales con 'python api_keys.py' o define las variables de entorno "
-        "OPENAI_API_KEY, YOUTUBE_API_KEY, ARCGIS_USERNAME y ARCGIS_PASSWORD."
+        "OPENROUTER_API_KEY, YOUTUBE_API_KEY, ARCGIS_USERNAME y ARCGIS_PASSWORD "
+        "o el archivo api_keys.txt."
     )
 
 
@@ -174,8 +241,10 @@ def _load_keyring_credentials(service_id: str) -> Credentials:
     """Load stored credentials from the OS keyring."""
 
     keyring = _import_keyring()
+    openrouter_key = _clean_credential(keyring.get_password(service_id, KEYRING_OPENAI_KEY))
+    legacy_openai_key = _clean_credential(keyring.get_password(service_id, KEYRING_LEGACY_OPENAI_KEY))
     return Credentials(
-        openai_api_key=_clean_credential(keyring.get_password(service_id, KEYRING_OPENAI_KEY)),
+        openai_api_key=openrouter_key or legacy_openai_key,
         youtube_api_key=_clean_credential(keyring.get_password(service_id, KEYRING_YOUTUBE_KEY)),
         username=_clean_credential(keyring.get_password(service_id, KEYRING_USERNAME_KEY)),
         password=_clean_credential(keyring.get_password(service_id, KEYRING_PASSWORD_KEY)),
@@ -235,6 +304,16 @@ def _import_arcgis_geocode() -> Any:
     return geocode
 
 
+def _import_arcgis_get_geocoders() -> Any:
+    try:
+        from arcgis.geocoding import get_geocoders
+    except ImportError as exc:
+        raise ConfigurationError(
+            "Missing dependency 'arcgis'. Install the project requirements first."
+        ) from exc
+    return get_geocoders
+
+
 def _import_arcgis_gis_class() -> Any:
     try:
         from arcgis.gis import GIS
@@ -266,7 +345,7 @@ def _import_pick() -> Any:
 
 
 def load_credentials(service_id: str = KEYRING_SERVICE_ID) -> Credentials:
-    """Load credentials from keyring first and complete missing values from the environment."""
+    """Load credentials from keyring, environment, and api_keys.txt."""
 
     keyring_credentials = Credentials(None, None, None, None)
     try:
@@ -278,13 +357,22 @@ def load_credentials(service_id: str = KEYRING_SERVICE_ID) -> Credentials:
         )
 
     env_credentials = load_credentials_from_environment()
-    credentials = merge_credentials(keyring_credentials, env_credentials)
+    file_credentials = load_credentials_from_api_keys_file()
+    credentials = merge_credentials(
+        merge_credentials(keyring_credentials, env_credentials),
+        file_credentials,
+    )
 
     if not _credentials_available(credentials):
         LOGGER.warning("No se encontraron credenciales configuradas. %s", _missing_credentials_message())
     elif _credentials_available(env_credentials):
         LOGGER.info(
             "Credenciales resueltas con soporte de variables de entorno: %s",
+            _describe_credentials(credentials),
+        )
+    elif _credentials_available(file_credentials):
+        LOGGER.info(
+            "Credenciales resueltas con soporte de api_keys.txt: %s",
             _describe_credentials(credentials),
         )
 
@@ -321,14 +409,21 @@ def extract_location_with_openai(title: str, api_key: str | None) -> str | None:
     validate_video_title(title)
     if not api_key:
         raise ConfigurationError(
-            f"OpenAI API key is missing. {_missing_credentials_message()}"
+            f"OpenRouter API key is missing. {_missing_credentials_message()}"
         )
 
-    LOGGER.info("Extracting location from title with OpenAI: %s", title)
+    LOGGER.info("Extracting location from title with OpenRouter: %s", title)
     openai_client_class = _import_openai_client_class()
 
     try:
-        client = openai_client_class(api_key=api_key)
+        client = openai_client_class(
+            api_key=api_key,
+            base_url=OPENROUTER_BASE_URL,
+            default_headers={
+                "HTTP-Referer": OPENROUTER_HTTP_REFERER,
+                "X-Title": OPENROUTER_APP_TITLE,
+            },
+        )
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=[
@@ -342,7 +437,7 @@ def extract_location_with_openai(title: str, api_key: str | None) -> str | None:
             max_tokens=OPENAI_MAX_TOKENS,
         )
     except Exception as exc:
-        raise OpenAIServiceError(f"Error while calling OpenAI API: {exc}") from exc
+        raise OpenAIServiceError(f"Error while calling OpenRouter API: {exc}") from exc
 
     if not getattr(response, "choices", None):
         return None
@@ -469,7 +564,7 @@ def create_features_from_locations(
     return features
 
 
-def geocode_location(location_name: str) -> dict[str, float] | None:
+def geocode_location(location_name: str, gis: Any | None = None) -> dict[str, float] | None:
     """Geocode a location name into ArcGIS coordinates."""
 
     validate_location_name(location_name)
@@ -477,7 +572,16 @@ def geocode_location(location_name: str) -> dict[str, float] | None:
 
     geocode = _import_arcgis_geocode()
     try:
-        geocoding_result = geocode(location_name, max_locations=MAX_GEOCODING_RESULTS)
+        geocode_kwargs: dict[str, Any] = {"max_locations": MAX_GEOCODING_RESULTS}
+        if gis is not None:
+            get_geocoders = _import_arcgis_get_geocoders()
+            geocoders = get_geocoders(gis)
+            if geocoders:
+                geocode_kwargs["geocoder"] = geocoders[0]
+        geocoding_result = geocode(
+            location_name,
+            **geocode_kwargs,
+        )
     except Exception as exc:
         raise GeocodingError(
             f"Error geocoding location '{location_name}': {exc}"
@@ -490,13 +594,16 @@ def geocode_location(location_name: str) -> dict[str, float] | None:
     return None
 
 
-def geocode_locations(location_names: Sequence[str]) -> list[dict[str, float] | None]:
+def geocode_locations(
+    location_names: Sequence[str],
+    gis: Any | None = None,
+) -> list[dict[str, float] | None]:
     """Geocode a batch of location names while preserving input order."""
 
     results: list[dict[str, float] | None] = []
     for location_name in location_names:
         try:
-            results.append(geocode_location(location_name))
+            results.append(geocode_location(location_name, gis=gis))
         except (ValidationError, GeocodingError) as exc:
             LOGGER.warning("%s", exc)
             results.append(None)
@@ -511,7 +618,7 @@ def extract_location_pairs_from_titles(
 
     if not openai_api_key:
         raise ConfigurationError(
-            f"OpenAI API key is missing. {_missing_credentials_message()}"
+            f"OpenRouter API key is missing. {_missing_credentials_message()}"
         )
 
     matched_titles: list[str] = []
@@ -587,6 +694,16 @@ def create_gis_connection(username: str | None, password: str | None) -> Any:
         raise ArcGISError(f"Error connecting to ArcGIS Online: {exc}") from exc
 
 
+def create_public_gis_connection() -> Any:
+    """Create an anonymous GIS session for public services such as geocoding."""
+
+    gis_class = _import_arcgis_gis_class()
+    try:
+        return gis_class(ARCGIS_PORTAL)
+    except Exception as exc:
+        raise ArcGISError(f"Error connecting to public ArcGIS services: {exc}") from exc
+
+
 def get_root_folder(gis: Any) -> Any:
     """Return the root folder for the authenticated GIS user."""
 
@@ -646,9 +763,12 @@ def process_and_publish_videos(
     validate_num_videos(num_videos)
     validate_api_keys(openai_api_key, youtube_api_key)
 
-    credentials = arcgis_credentials or load_credentials(KEYRING_SERVICE_ID)
-    validate_credentials(credentials.username, credentials.password)
-    gis = create_gis_connection(credentials.username, credentials.password)
+    if dry_run:
+        gis = create_public_gis_connection()
+    else:
+        credentials = arcgis_credentials or load_credentials(KEYRING_SERVICE_ID)
+        validate_credentials(credentials.username, credentials.password)
+        gis = create_gis_connection(credentials.username, credentials.password)
 
     titles = get_youtube_videos(youtube_api_key, channel_id, num_videos)
     matched_titles, location_names = extract_location_pairs_from_titles(
@@ -658,7 +778,7 @@ def process_and_publish_videos(
         LOGGER.warning("No locations were extracted from the selected videos.")
         return None
 
-    locations = geocode_locations(location_names)
+    locations = geocode_locations(location_names, gis=gis)
     features = create_features_from_locations(matched_titles, location_names, locations)
     if not features:
         LOGGER.warning("No valid features were generated. Skipping publication.")
@@ -737,7 +857,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         help="Number of recent videos to process",
     )
-    parser.add_argument("--openai-api-key", help="OpenAI API key")
+    parser.add_argument(
+        "--openrouter-api-key",
+        "--openai-api-key",
+        dest="openai_api_key",
+        help="OpenRouter API key",
+    )
     parser.add_argument("--youtube-api-key", help="YouTube API key")
     parser.add_argument("--arcgis-username", help="ArcGIS Online username")
     parser.add_argument("--arcgis-password", help="ArcGIS Online password")

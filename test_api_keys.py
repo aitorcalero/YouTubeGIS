@@ -40,7 +40,7 @@ def test_collect_credentials_returns_all_values() -> None:
     )
 
     assert values == {
-        "OPENAI_API_KEY": "openai-key",
+        "OPENROUTER_API_KEY": "openai-key",
         "YOUTUBE_API_KEY": "youtube-key",
         "USERNAME": "arcgis-user",
         "PWD": "arcgis-password",
@@ -54,7 +54,7 @@ def test_save_credentials_persists_all_values(monkeypatch) -> None:
     save_credentials(
         KEYRING_SERVICE_ID,
         {
-            "OPENAI_API_KEY": "openai-key",
+            "OPENROUTER_API_KEY": "openai-key",
             "YOUTUBE_API_KEY": "youtube-key",
             "USERNAME": "arcgis-user",
             "PWD": "arcgis-password",
@@ -62,7 +62,7 @@ def test_save_credentials_persists_all_values(monkeypatch) -> None:
     )
 
     assert mock_keyring.set_password.call_count == 4
-    mock_keyring.set_password.assert_any_call(KEYRING_SERVICE_ID, "OPENAI_API_KEY", "openai-key")
+    mock_keyring.set_password.assert_any_call(KEYRING_SERVICE_ID, "OPENROUTER_API_KEY", "openai-key")
     mock_keyring.set_password.assert_any_call(KEYRING_SERVICE_ID, "YOUTUBE_API_KEY", "youtube-key")
     mock_keyring.set_password.assert_any_call(KEYRING_SERVICE_ID, "USERNAME", "arcgis-user")
     mock_keyring.set_password.assert_any_call(KEYRING_SERVICE_ID, "PWD", "arcgis-password")

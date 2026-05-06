@@ -4,8 +4,14 @@ from __future__ import annotations
 
 from typing import Final
 
-# OpenAI Configuration
-OPENAI_MODEL: Final[str] = "gpt-4"
+# OpenRouter Configuration
+OPENROUTER_BASE_URL: Final[str] = "https://openrouter.ai/api/v1"
+OPENROUTER_MODEL: Final[str] = "openai/gpt-4o-mini"
+OPENROUTER_HTTP_REFERER: Final[str] = "https://github.com/aitor/YouTubeGIS"
+OPENROUTER_APP_TITLE: Final[str] = "YouTubeGIS"
+
+# Model Configuration
+OPENAI_MODEL: Final[str] = OPENROUTER_MODEL
 OPENAI_TEMPERATURE: Final[float] = 0.3
 OPENAI_MAX_TOKENS: Final[int] = 64
 OPENAI_SYSTEM_PROMPT: Final[str] = (
@@ -40,16 +46,23 @@ GEOJSON_INDENT: Final[int] = 2
 
 # Keyring Configuration
 KEYRING_SERVICE_ID: Final[str] = "YouTubeGIS"
-KEYRING_OPENAI_KEY: Final[str] = "OPENAI_API_KEY"
+KEYRING_OPENROUTER_KEY: Final[str] = "OPENROUTER_API_KEY"
+KEYRING_OPENAI_KEY: Final[str] = KEYRING_OPENROUTER_KEY
+KEYRING_LEGACY_OPENAI_KEY: Final[str] = "OPENAI_API_KEY"
 KEYRING_YOUTUBE_KEY: Final[str] = "YOUTUBE_API_KEY"
 KEYRING_USERNAME_KEY: Final[str] = "USERNAME"
 KEYRING_PASSWORD_KEY: Final[str] = "PWD"
 
+# Working directory for persistent YouTubeGIS data (cron context)
+WORKING_DIR: Final[str] = "/home/aitor/YouTubeGIS"
+FALLBACK_WORKING_DIR: Final[str] = "/tmp/YouTubeGIS"
+API_KEYS_FILENAME: Final[str] = "api_keys.txt"
+
 # Environment Variable Configuration
-ENV_OPENAI_API_KEYS: Final[tuple[str, ...]] = ("OPENAI_API_KEY",)
+ENV_OPENAI_API_KEYS: Final[tuple[str, ...]] = ("OPENROUTER_API_KEY", "OPENROUTER", "OPENAI_API_KEY")
 ENV_YOUTUBE_API_KEYS: Final[tuple[str, ...]] = ("YOUTUBE_API_KEY",)
 ENV_ARCGIS_USERNAMES: Final[tuple[str, ...]] = ("ARCGIS_USERNAME", "USERNAME")
-ENV_ARCGIS_PASSWORDS: Final[tuple[str, ...]] = ("ARCGIS_PASSWORD", "PWD")
+ENV_ARCGIS_PASSWORDS: Final[tuple[str, ...]] = ("ARCGIS_PASSWORD",)
 
 # UI Configuration
 CHANNEL_SELECTION_TITLE: Final[str] = "Elige el canal de YouTube que quieras: "

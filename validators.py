@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 
 CREDENTIALS_HELP = (
     "Configura las credenciales con 'python api_keys.py' o define las variables de entorno "
-    "OPENAI_API_KEY, YOUTUBE_API_KEY, ARCGIS_USERNAME y ARCGIS_PASSWORD."
+    "OPENROUTER_API_KEY, YOUTUBE_API_KEY, ARCGIS_USERNAME y ARCGIS_PASSWORD "
+    "o el archivo api_keys.txt."
 )
 
 
@@ -63,14 +64,14 @@ def validate_api_keys(openai_key: str | None, youtube_key: str | None) -> None:
     """Validate that API keys are present.
     
     Args:
-        openai_key: OpenAI API key
+        openai_key: OpenRouter API key
         youtube_key: YouTube API key
         
     Raises:
         ConfigurationError: If any required API key is missing
     """
     if not openai_key:
-        raise ConfigurationError(f"OpenAI API key is missing. {CREDENTIALS_HELP}")
+        raise ConfigurationError(f"OpenRouter API key is missing. {CREDENTIALS_HELP}")
     
     if not youtube_key:
         raise ConfigurationError(f"YouTube API key is missing. {CREDENTIALS_HELP}")

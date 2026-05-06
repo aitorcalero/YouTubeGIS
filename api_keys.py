@@ -34,7 +34,7 @@ class CredentialField:
 
 
 CREDENTIAL_FIELDS: tuple[CredentialField, ...] = (
-    CredentialField("Clave API de OpenAI", KEYRING_OPENAI_KEY, ENV_OPENAI_API_KEYS),
+    CredentialField("Clave API de OpenRouter", KEYRING_OPENAI_KEY, ENV_OPENAI_API_KEYS),
     CredentialField("Clave API de YouTube", KEYRING_YOUTUBE_KEY, ENV_YOUTUBE_API_KEYS),
     CredentialField("Usuario de ArcGIS Online", KEYRING_USERNAME_KEY, ENV_ARCGIS_USERNAMES, secret=False),
     CredentialField("Contraseña de ArcGIS Online", KEYRING_PASSWORD_KEY, ENV_ARCGIS_PASSWORDS),
@@ -124,7 +124,7 @@ def print_environment_hints() -> None:
     """Explain the optional environment-variable fallback."""
 
     print("\nTambién puedes ejecutar el proyecto sin keyring usando variables de entorno:")
-    print("- OPENAI_API_KEY")
+    print("- OPENROUTER_API_KEY")
     print("- YOUTUBE_API_KEY")
     print("- ARCGIS_USERNAME")
     print("- ARCGIS_PASSWORD")

@@ -1,6 +1,6 @@
 # YouTubeGIS
 
-`YouTubeGIS` transforma títulos de vídeos de YouTube en datos geoespaciales: detecta ubicaciones con OpenAI, las geocodifica con ArcGIS y publica el resultado como un `Feature Service` en ArcGIS Online.
+`YouTubeGIS` transforma títulos de vídeos de YouTube en datos geoespaciales: detecta ubicaciones con OpenRouter, las geocodifica con ArcGIS y publica el resultado como un `Feature Service` en ArcGIS Online.
 
 ## Estado actual
 
@@ -13,7 +13,7 @@
 
 - Python 3.11 o superior
 - Una cuenta de ArcGIS Online con permisos para publicar contenido
-- Clave API de OpenAI
+- Clave API de OpenRouter
 - Clave API de YouTube Data v3
 
 Dependencias Python principales:
@@ -60,7 +60,7 @@ python api_keys.py
 
 El asistente solicitará y guardará en `keyring`:
 
-- `OPENAI_API_KEY`
+- `OPENROUTER_API_KEY`
 - `YOUTUBE_API_KEY`
 - `USERNAME` de ArcGIS Online
 - `PWD` de ArcGIS Online
@@ -71,15 +71,18 @@ Si ya existen valores guardados, el asistente preguntará si quieres sobrescribi
 
 Si una credencial no existe en `keyring`, `YouTubeGIS` intentará resolverla desde estas variables:
 
-- `OPENAI_API_KEY`
+- `OPENROUTER_API_KEY`
 - `YOUTUBE_API_KEY`
 - `ARCGIS_USERNAME`
 - `ARCGIS_PASSWORD`
+- `OPENAI_API_KEY` sigue aceptándose como alias legacy
+
+También puedes usar un archivo local `api_keys.txt` en la raíz del proyecto con formato `KEY=VALUE`. Para OpenRouter se aceptan `OPENROUTER_API_KEY` u `OPENROUTER`.
 
 #### Ejemplo en PowerShell
 
 ```powershell
-$env:OPENAI_API_KEY="tu-clave-openai"
+$env:OPENROUTER_API_KEY="tu-clave-openrouter"
 $env:YOUTUBE_API_KEY="tu-clave-youtube"
 $env:ARCGIS_USERNAME="tu-usuario"
 $env:ARCGIS_PASSWORD="tu-password"
@@ -89,7 +92,7 @@ python .\YouTubeGIS.py
 #### Ejemplo en Bash
 
 ```bash
-export OPENAI_API_KEY="tu-clave-openai"
+export OPENROUTER_API_KEY="tu-clave-openrouter"
 export YOUTUBE_API_KEY="tu-clave-youtube"
 export ARCGIS_USERNAME="tu-usuario"
 export ARCGIS_PASSWORD="tu-password"
@@ -134,7 +137,7 @@ Y, si lo prefieres, pasar también las credenciales por parámetros:
 python YouTubeGIS.py \
   --channel-id UCdwdFOhBP9CoAOlHDTmTxaw \
   --num-videos 1 \
-  --openai-api-key "***" \
+  --openrouter-api-key "***" \
   --youtube-api-key "***" \
   --arcgis-username "tu-usuario" \
   --arcgis-password "***" \
@@ -170,7 +173,7 @@ Carga credenciales desde `keyring` y completa cualquier valor ausente con variab
 Resuelve credenciales directamente desde el entorno para ejecuciones no interactivas.
 
 ### `extract_location_with_openai(title, api_key)`
-Extrae la localización más probable de un título usando OpenAI.
+Extrae la localización más probable de un título usando OpenRouter mediante la API compatible con OpenAI.
 
 ### `extract_location_pairs_from_titles(titles, openai_api_key)`
 Devuelve títulos y ubicaciones válidas preservando su alineación.

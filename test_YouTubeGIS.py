@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,12 +8,17 @@ import pytest
 from exceptions import ConfigurationError, ValidationError
 from YouTubeGIS import (
     Credentials,
+    _candidate_api_key_files,
     build_feature_service_url,
     create_features_from_locations,
+    create_public_gis_connection,
+    geocode_location,
+    geocode_locations,
     extract_location_pairs_from_titles,
     extract_location_with_openai,
     get_root_folder,
     load_credentials,
+    load_credentials_from_api_keys_file,
     load_credentials_from_environment,
     main,
     merge_credentials,
@@ -50,8 +56,11 @@ def test_extract_location_with_openai_success(
     )
 
     assert result == "Madrid, Spain"
+    mock_openai_class.assert_called_once()
+    assert mock_openai_class.call_args.kwargs["base_url"] == "https://openrouter.ai/api/v1"
     mock_client_instance.chat.completions.create.assert_called_once()
     called_kwargs = mock_client_instance.chat.completions.create.call_args.kwargs
+    assert called_kwargs["model"] == "openai/gpt-4o-mini"
     assert called_kwargs["messages"][0]["content"].startswith(
         "Eres un experto en geografía y análisis de títulos de vídeo."
     )
@@ -106,6 +115,41 @@ def test_create_features_from_locations_rejects_mismatched_lengths() -> None:
         )
 
 
+@patch("YouTubeGIS._import_arcgis_get_geocoders")
+@patch("YouTubeGIS._import_arcgis_geocode")
+def test_geocode_location_uses_gis_geocoder(
+    mock_import_geocode: MagicMock,
+    mock_import_get_geocoders: MagicMock,
+) -> None:
+    mock_geocode = MagicMock(return_value=[{"location": {"x": 1.0, "y": 2.0}}])
+    mock_import_geocode.return_value = mock_geocode
+    mock_geocoder = MagicMock()
+    mock_get_geocoders = MagicMock(return_value=[mock_geocoder])
+    mock_import_get_geocoders.return_value = mock_get_geocoders
+    mock_gis = MagicMock()
+
+    result = geocode_location("Madrid", gis=mock_gis)
+
+    assert result == {"x": 1.0, "y": 2.0}
+    mock_get_geocoders.assert_called_once_with(mock_gis)
+    mock_geocode.assert_called_once_with(
+        "Madrid",
+        max_locations=1,
+        geocoder=mock_geocoder,
+    )
+
+
+@patch("YouTubeGIS.geocode_location")
+def test_geocode_locations_passes_gis_connection(mock_geocode_location: MagicMock) -> None:
+    mock_geocode_location.return_value = {"x": 1.0, "y": 2.0}
+    mock_gis = MagicMock()
+
+    results = geocode_locations(["Madrid"], gis=mock_gis)
+
+    assert results == [{"x": 1.0, "y": 2.0}]
+    mock_geocode_location.assert_called_once_with("Madrid", gis=mock_gis)
+
+
 def test_build_feature_service_url_uses_dynamic_portal_url() -> None:
     url = build_feature_service_url(
         "abc123",
@@ -128,13 +172,25 @@ def test_get_root_folder_uses_logged_in_user() -> None:
     mock_gis.content.folders.get.assert_called_once_with(owner=mock_user)
 
 
+@patch("YouTubeGIS._import_arcgis_gis_class")
+def test_create_public_gis_connection_uses_arcgis_portal(mock_import_gis: MagicMock) -> None:
+    mock_gis_class = MagicMock()
+    mock_import_gis.return_value = mock_gis_class
+
+    result = create_public_gis_connection()
+
+    assert result is mock_gis_class.return_value
+    mock_gis_class.assert_called_once_with("https://www.arcgis.com")
+
+
 @patch.dict(
     "os.environ",
     {
-        "OPENAI_API_KEY": "env-openai",
+        "OPENROUTER_API_KEY": "env-openrouter",
         "YOUTUBE_API_KEY": "env-youtube",
         "ARCGIS_USERNAME": "env-user",
         "ARCGIS_PASSWORD": "env-password",
+        "PWD": "/not/an/arcgis/password",
     },
     clear=True,
 )
@@ -142,11 +198,72 @@ def test_load_credentials_from_environment_supports_all_values() -> None:
     credentials = load_credentials_from_environment()
 
     assert credentials == Credentials(
-        openai_api_key="env-openai",
+        openai_api_key="env-openrouter",
         youtube_api_key="env-youtube",
         username="env-user",
         password="env-password",
     )
+
+
+@patch.dict(
+    "os.environ",
+    {
+        "PWD": "/home/aitor/YouTubeGIS",
+    },
+    clear=True,
+)
+def test_load_credentials_from_environment_ignores_shell_pwd() -> None:
+    credentials = load_credentials_from_environment()
+
+    assert credentials.password is None
+
+
+@patch.dict(
+    "os.environ",
+    {
+        "OPENROUTER": "env-openrouter",
+        "OPENAI_API_KEY": "env-openai",
+    },
+    clear=True,
+)
+def test_load_credentials_from_environment_prefers_openrouter_aliases() -> None:
+    credentials = load_credentials_from_environment()
+
+    assert credentials.openai_api_key == "env-openrouter"
+
+
+def test_load_credentials_from_api_keys_file_supports_openrouter_key(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "api_keys.txt").write_text(
+        "\n".join(
+            [
+                "OPENAI_API_KEY=legacy-openai",
+                "YOUTUBE_API_KEY=youtube-key",
+                "USERNAME=arcgis-user",
+                "PWD=arcgis-password",
+                "OPENROUTER=openrouter-key",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    credentials = load_credentials_from_api_keys_file()
+
+    assert credentials == Credentials(
+        openai_api_key="openrouter-key",
+        youtube_api_key="youtube-key",
+        username="arcgis-user",
+        password="arcgis-password",
+    )
+
+
+def test_candidate_api_key_files_includes_project_root_when_cwd_differs(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    candidates = _candidate_api_key_files()
+
+    assert tmp_path / "api_keys.txt" in candidates
+    assert Path(__file__).resolve().parent / "api_keys.txt" in candidates
 
 
 def test_merge_credentials_prefers_primary_values() -> None:
@@ -174,6 +291,12 @@ def test_parse_args_accepts_dry_run_flag() -> None:
     args = parse_args(["--dry-run"])
 
     assert args.dry_run is True
+
+
+def test_parse_args_accepts_openrouter_api_key_alias() -> None:
+    args = parse_args(["--openrouter-api-key", "openrouter-key"])
+
+    assert args.openai_api_key == "openrouter-key"
 
 
 @patch("YouTubeGIS.process_and_publish_videos")
@@ -260,7 +383,7 @@ def test_main_with_no_browser_does_not_open_browser(mock_webbrowser_open: MagicM
 @patch.dict(
     "os.environ",
     {
-        "OPENAI_API_KEY": "env-openai",
+        "OPENROUTER_API_KEY": "env-openrouter",
         "ARCGIS_PASSWORD": "env-password",
     },
     clear=True,
@@ -279,7 +402,7 @@ def test_load_credentials_combines_keyring_and_environment(
     credentials = load_credentials()
 
     assert credentials == Credentials(
-        openai_api_key="env-openai",
+        openai_api_key="env-openrouter",
         youtube_api_key="keyring-youtube",
         username="keyring-user",
         password="env-password",
@@ -289,7 +412,7 @@ def test_load_credentials_combines_keyring_and_environment(
 @patch.dict(
     "os.environ",
     {
-        "OPENAI_API_KEY": "env-openai",
+        "OPENROUTER_API_KEY": "env-openrouter",
         "YOUTUBE_API_KEY": "env-youtube",
         "ARCGIS_USERNAME": "env-user",
         "ARCGIS_PASSWORD": "env-password",
@@ -303,7 +426,7 @@ def test_load_credentials_uses_environment_when_keyring_unavailable(
     credentials = load_credentials()
 
     assert credentials == Credentials(
-        openai_api_key="env-openai",
+        openai_api_key="env-openrouter",
         youtube_api_key="env-youtube",
         username="env-user",
         password="env-password",
@@ -314,7 +437,7 @@ def test_load_credentials_uses_environment_when_keyring_unavailable(
 @patch.dict(
     "os.environ",
     {
-        "OPENAI_API_KEY": "env-openai",
+        "OPENROUTER_API_KEY": "env-openrouter",
         "YOUTUBE_API_KEY": "env-youtube",
         "ARCGIS_USERNAME": "env-user",
         "ARCGIS_PASSWORD": "env-password",
@@ -328,7 +451,7 @@ def test_load_credentials_uses_environment_when_keyring_raises_runtime_error(
     credentials = load_credentials()
 
     assert credentials == Credentials(
-        openai_api_key="env-openai",
+        openai_api_key="env-openrouter",
         youtube_api_key="env-youtube",
         username="env-user",
         password="env-password",
@@ -391,9 +514,11 @@ def test_publish_geojson_as_feature_service_uses_folder_add_job(
 @patch("YouTubeGIS.geocode_locations")
 @patch("YouTubeGIS.extract_location_pairs_from_titles")
 @patch("YouTubeGIS.get_youtube_videos")
+@patch("YouTubeGIS.create_public_gis_connection")
 @patch("YouTubeGIS.create_gis_connection")
 def test_process_and_publish_videos_dry_run_skips_publication_and_browser(
     mock_create_gis_connection: MagicMock,
+    mock_create_public_gis_connection: MagicMock,
     mock_get_youtube_videos: MagicMock,
     mock_extract_pairs: MagicMock,
     mock_geocode_locations: MagicMock,
@@ -414,8 +539,8 @@ def test_process_and_publish_videos_dry_run_skips_publication_and_browser(
     mock_create_features.return_value = [{"type": "Feature"}]
     mock_save_to_geojson.return_value = "output.geojson"
 
-    mock_gis = MagicMock()
-    mock_create_gis_connection.return_value = mock_gis
+    mock_public_gis = MagicMock()
+    mock_create_public_gis_connection.return_value = mock_public_gis
 
     result = process_and_publish_videos(
         "youtube-key",
@@ -427,6 +552,9 @@ def test_process_and_publish_videos_dry_run_skips_publication_and_browser(
     )
 
     assert result == "output.geojson"
+    mock_create_public_gis_connection.assert_called_once_with()
+    mock_create_gis_connection.assert_not_called()
+    mock_geocode_locations.assert_called_once_with(["Madrid"], gis=mock_public_gis)
     mock_publish_geojson.assert_not_called()
     mock_open_browser.assert_not_called()
 
@@ -478,6 +606,7 @@ def test_process_and_publish_videos_uses_aligned_titles(
     )
 
     assert result is published_item
+    mock_geocode_locations.assert_called_once_with(["Paris", "Tokyo"], gis=mock_gis)
     mock_create_features.assert_called_once_with(
         ["Title 1", "Title 3"],
         ["Paris", "Tokyo"],
